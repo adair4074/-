@@ -7,70 +7,77 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
 
-    socket = new QTcpSocket();
+    ui->lineEdit_Port->setText("8765");
+    ui->pushButton_Send->setEnabled(false);
+
+    server = new QTcpServer();
 
     //连接信号槽
-    QObject::connect(socket, &QTcpSocket::readyRead, this, &MainWindow::socket_Read_Data);
-    QObject::connect(socket, &QTcpSocket::disconnected, this, &MainWindow::socket_Disconnected);
-
-    ui->pushButton_Send->setEnabled(false);
-    ui->lineEdit_IP->setText("127.0.0.1");
-    ui->lineEdit_Port->setText("8765");
-
+    connect(server,&QTcpServer::newConnection,this,&MainWindow::server_New_Connect);
 }
 
 MainWindow::~MainWindow()
 {
-    delete this->socket;
+    server->close();
+    server->deleteLater();
     delete ui;
 }
 
-void MainWindow::on_pushButton_Connect_clicked()
+void MainWindow::on_pushButton_Listen_clicked()
 {
-    if(ui->pushButton_Connect->text() == tr("连接"))
+    if(ui->pushButton_Listen->text() == tr("侦听"))
     {
-        QString IP;
-        int port;
+        //从输入框获取端口号
+        int port = ui->lineEdit_Port->text().toInt();
 
-        //获取IP地址
-        IP = ui->lineEdit_IP->text();
-        //获取端口号
-        port = ui->lineEdit_Port->text().toInt();
-
-        //取消已有的连接
-        socket->abort();
-        //连接服务器
-        socket->connectToHost(IP, port);
-
-        //等待连接成功
-        if(!socket->waitForConnected(30000))
+        //监听指定的端口
+        if(!server->listen(QHostAddress::Any, port))
         {
-            qDebug() << "Connection failed!";
+            //若出错，则输出错误信息
+            qDebug()<<server->errorString();
             return;
         }
-        qDebug() << "Connect successfully!";
-
-        //发送按键使能
-        ui->pushButton_Send->setEnabled(true);
         //修改按键文字
-        ui->pushButton_Connect->setText("断开连接");
+        ui->pushButton_Listen->setText("取消侦听");
+        qDebug()<< "Listen succeessfully!";
     }
     else
     {
-        //断开连接
-        socket->disconnectFromHost();
+        //如果正在连接
+        if(socket->state() == QAbstractSocket::ConnectedState)
+        {
+            //关闭连接
+            socket->disconnectFromHost();
+        }
+        //取消侦听
+        server->close();
         //修改按键文字
-        ui->pushButton_Connect->setText("连接");
+        ui->pushButton_Listen->setText("侦听");
+        //发送按键失能
         ui->pushButton_Send->setEnabled(false);
     }
+
 }
 
 void MainWindow::on_pushButton_Send_clicked()
 {
     qDebug() << "Send: " << ui->textEdit_Send->toPlainText();
-     //获取文本框内容并以ASCII码形式发送
+    //获取文本框内容并以ASCII码形式发送
     socket->write(ui->textEdit_Send->toPlainText().toLatin1());
     socket->flush();
+}
+
+void MainWindow::server_New_Connect()
+{
+    //获取客户端连接
+    socket = server->nextPendingConnection();
+    //连接QTcpSocket的信号槽，以读取新数据
+    QObject::connect(socket, &QTcpSocket::readyRead, this, &MainWindow::socket_Read_Data);
+    QObject::connect(socket, &QTcpSocket::disconnected, this, &MainWindow::socket_Disconnected);
+    //发送按键使能
+    ui->pushButton_Send->setEnabled(true);
+
+    qDebug() << "A Client connect!";
 }
 
 void MainWindow::socket_Read_Data()
@@ -91,7 +98,5 @@ void MainWindow::socket_Disconnected()
 {
     //发送按键失能
     ui->pushButton_Send->setEnabled(false);
-    //修改按键文字
-    ui->pushButton_Connect->setText("连接");
     qDebug() << "Disconnected!";
 }

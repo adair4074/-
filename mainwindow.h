@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QTcpServer>
 #include <QTcpSocket>
 
 namespace Ui {
@@ -17,10 +18,11 @@ public:
     ~MainWindow();
 
 private slots:
-
-    void on_pushButton_Connect_clicked();
+    void on_pushButton_Listen_clicked();
 
     void on_pushButton_Send_clicked();
+
+    void server_New_Connect();
 
     void socket_Read_Data();
 
@@ -28,7 +30,8 @@ private slots:
 
 private:
     Ui::MainWindow *ui;
-    QTcpSocket *socket;
+    QTcpServer* server;
+    QTcpSocket* socket;
 };
 
 #endif // MAINWINDOW_H
