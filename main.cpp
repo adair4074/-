@@ -1,16 +1,13 @@
 #include "mainwindow.h"
 #include <QApplication>
-#include <QVBoxLayout>
-#include <QWidget>
-#include <QHBoxLayout>
-#include <QLabel>
-#include <QPen>
-#include <qmath.h>
+#include <QtSerialPort/QSerialPort>
+#include <QtSerialPort/QSerialPortInfo>
 #include <QDebug>
-#include<QPainter>
-#include<QBasicTimer>
-#include<QTimerEvent>
-const int ecgWave[] = {2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000,
+#include <QWidget>
+#include <QTimer>
+
+int ecgData []= {
+        2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000,
         2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000,
         2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000,
         2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000,
@@ -61,133 +58,129 @@ const int ecgWave[] = {2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 200
         2096, 2088, 2080, 2072, 2064, 2064, 2064, 2048, 2032, 2024,
         2016, 2016, 2016, 2008, 2000, 2000, 2000, 2000, 2000,
         2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000};
-
-
-class QWidgetDraw : public QWidget
+//define QWidgetSerialTx类
+class QWidgetSerialTx :public QWidget
 {
+    //Q_OBJECT
 public:
-      int ecgDataIndex;
-
-      qreal index;
-      qreal range;
-      QPixmap *pixmap;
-      QWidgetDraw(QWidget* parent=0):QWidget(parent)
-      {
-          QBasicTimer *timer = new QBasicTimer();
-          timer->start(10,this);
-
-          pixmap = new QPixmap(this->width(),this->height());
-          pixmap->fill(Qt::black);
-
-          index = 0;
-          range = 0;
-
-      }
-      virtual void timerEvent(QTimerEvent *event)
-      {
-          drawWaveToPixmap();
-          this->update();
-      }
-      drawWaveToPixmap()
-      {
-          QPainter pixPainter;
-          pixPainter.begin(this->pixmap);
-          drawEcgWave(&pixPainter);
-          pixPainter.end();
-      }
-
-      virtual void paintEvent(QPaintEvent *event)
-      {
-          QPainter *painter = new QPainter();
-          qDebug() <<"paintEvent";
-          painter->begin(this);
-          painter->resetTransform();
-
-          //painter->setBrush(QColor("#F40002"));
-          //painter->setPen(QColor("#F40002"));
-
-          //drawSineWave(painter);
-          painter->drawPixmap(0,0,*pixmap);
-
-          painter->resetTransform();
-          painter->end();
-      }
-
-
-
-      drawEcgWave(QPainter *painter)
-      {
-          QPen pen;
-          pen.setWidth(2);
-          pen.setColor(QColor("#F40002"));
-          painter->setPen(pen);
-
-          index = index + 1;
-          if(index > width())
-              index = 1;
-
-          //擦除当前列
-          painter->save();
-          pen.setColor(Qt::black);
-          painter->setPen(pen);
-          painter->drawLine(index,0,index,height());
-          painter->restore();
-
-          qreal height=this->height();
-          QPoint lineStart;
-          QPoint lineEnd;
-
-          lineStart.setX(index -1);
-          lineEnd.setX(index);
-
-
-          //qDebug()<<height/4096 * ecgWave[ecgDataIndex];
-          //painter->drawPoint(this->index,height/4096 * ecgWave[ecgDataIndex]);
-
-          qreal value = ecgWave[ecgDataIndex];
-          int y = round(height/2 - ((value - 2048)/600)*height/2);
-          qDebug()<<y;
-          lineStart.setY(y);
-
-
-          ecgDataIndex = ecgDataIndex+5;
-          if(ecgDataIndex >= sizeof(ecgWave)/sizeof(int))
-              ecgDataIndex = 0;
-          value=ecgWave[ecgDataIndex];
-          y = round(height/2 - ((value - 2048)/600)*height/2);
-          lineEnd.setY(y);
-          painter->drawLine(lineStart,lineEnd);
-      }
+     QWidgetSerialTx(QWidget *parent=nullptr):QWidget(parent)
+     {
+         if(0!=this->serialInit())//不等于
+         {
+             qDebug()<<"serialInit error";
+             return;
+         }
+         timer =new QTimer();
+         connect(timer,&QTimer::timeout,this,&QWidgetSerialTx::sendEcgPkg);
+         timer->start(2);//每秒500个数据 采样率
+     }
+public:
+     QSerialPort *com;
+     QTimer *timer;
+     int ecgDataIndex=0;
+public:
+     int serialInit(void);//初始化
+     char bccCheck(char *data,int len);
+public slots://槽函数声明
+     void sendEcgPkg();//发送数据包
 
 };
-class EcgWave:public QWidget
+//发送初始化
+int QWidgetSerialTx::serialInit(void)
 {
-public:
-    EcgWave(QWidget *parent = 0):QWidget(parent)
+    //打印可使用的串口信息  QSerialPortInfo::availablePorts()里面的数
+    foreach(const QSerialPortInfo &info ,QSerialPortInfo::availablePorts())
     {
-        this->setWindowFlags (Qt::FramelessWindowHint);
-        this->setStyleSheet("background-color:black");
+        qDebug()<<"Name: "<<info.portName();
+        qDebug()<<"Description:"<<info.description();
+        qDebug()<<"Manufacturer:"<<info.manufacturer();
+        qDebug()<<"Serial Number:"<<info.serialNumber();
 
-        QLabel *title = new QLabel("ECG");
-        title->setStyleSheet("color:white");
-        QWidgetDraw *waveWin = new QWidgetDraw();
-        QVBoxLayout *layout = new QVBoxLayout();
-
-        layout->addWidget(title);
-        layout->addWidget(waveWin);
-        layout->setStretch(0,1);
-        layout->setStretch(1,5);
-        this->setLayout(layout);
     }
-};
+    //创建串口对象，在头文件中定义指针
+    com=new QSerialPort();
+    //配置发送端口串口2，
+    com->setPortName("COM3");
+    //尝试打开串口
+    if(!com->open(QIODevice::ReadWrite))
+        {
+            qDebug()<<"Serialinfo open error";
+            return -1;//返回值一般正常返回时，返回0，异常为非0
+
+        }
+    else
+        qDebug()<<"serial open success !"<<com->portName();
+
+    //波特率配置
+        com->setBaudRate(QSerialPort::Baud115200, QSerialPort::AllDirections);
+    //数据位
+        com->setDataBits(QSerialPort::Data8);
+    //流控
+        com->setFlowControl(QSerialPort::NoFlowControl);
+    //校验位
+       com->setParity(QSerialPort::NoParity);
+    //停止位=1
+        com->setStopBits(QSerialPort::OneStop);
+
+    return 0;//返回值一般正常返回时，返回0
+}
+char QWidgetSerialTx::bccCheck(char *data,int len)
+{
+
+    //return 0x00;
+     int i = 0;
+     char ucCRCHi = 0x00;
+     char ucCRCLo=0x80;
+     ucCRCLo = (char)(ucCRCHi ^ data[0]);//异或
+     //qDebug("%02X",data[0]&0xFF);
+     for(i=1;i < len;i++)
+     {
+      ucCRCLo = (char)(ucCRCLo ^ data[i]);
+      //qDebug("%02X",data[i]&0xFF);
+     }
+     return ucCRCLo;
+
+
+}
+//发送数据
+void QWidgetSerialTx::sendEcgPkg()
+{
+    //char dataBuf[10]={(char)0x01,(char)0x02,(char)0x03,(char)0x04,(char)0x01,(char)0x02,(char)0x03,(char)0x04,(char)0x05,(char)0xFF};
+    //this->com->write(dataBuf,sizeof(dataBuf));//向串口4写数据
+    char dataBuf[10];
+    unsigned int ecg[3]={2048,2048,2048};
+    int i;
+    int len=(int)sizeof(ecgData)/sizeof(int);
+    //取ECG2数据
+    if(ecgDataIndex>len)
+        ecgDataIndex=0;
+    ecg[1]=ecgData[ecgDataIndex++];
+    //封包
+    dataBuf[0]=0x08;//包类型ID
+    dataBuf[1]=0x80;//数据头
+    //qDebug("%02X %02X",ecg[1]&0x80,ecg[1]&0x8000);
+
+    for(i=0; i < 3 ; i++)
+    {
+        dataBuf[1]=dataBuf[1]|((ecg[i]&0x80)>>(7-i*2-1));//去除低字节的最高位
+        dataBuf[1]=dataBuf[1]|((ecg[i]&0x8000)>>(15-i*2));//去除高字节的最高位
+        dataBuf[i*2+3]=0x80|(ecg[i]&0x7F);//低八位
+        dataBuf[i*2+2]=0x80|((ecg[i]>>8)&0x7F);//高八位
+
+    }
+    dataBuf[8]=0x80;//ECG的状态位
+    dataBuf[9]=(bccCheck(&dataBuf[0],9)|0x80);//校验位   0x80;解码时也需要进行相同的|0x80运算之后再比较
+    //qDebug("%02X",dataBuf[9]&0xFF);
+    this->com->write(dataBuf,sizeof(dataBuf));//向串口4写数据 一次发送10字节数据
+}
+
+
 
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
-    EcgWave *wave = new EcgWave();
-    wave->resize(600,150);
-    wave->show();
-
-
+//    MainWindow w;
+//    w.show();
+    QWidgetSerialTx *com=new QWidgetSerialTx();//实例化类
     return a.exec();
 }
